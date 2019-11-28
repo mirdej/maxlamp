@@ -232,6 +232,9 @@ void set_brightness() {
 			}
 		}
 		Serial.println(b);
+	} else {
+		if (on) b = brightness;
+		else b = 0.;
 	}
 	
 	ledcWrite(ledChannel, b * b * 30000);
