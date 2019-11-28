@@ -256,7 +256,7 @@ void check_encoder() {
     brightness += f;
     
     if (brightness > 1.) brightness = 1.;
-    if (brightness < 0). brightness = 0.;
+    if (brightness < 0.) brightness = 0.;
     encoder.setCount(0);
 	last_time_brightness_set = millis();
 	save_brightness = true;
@@ -279,11 +279,11 @@ void setup(){
     pinMode(PIN_ENCA,INPUT_PULLUP);
     pinMode(PIN_ENCB,INPUT_PULLUP);
 
-    encoder.attachHalfQuad(ENCA, ENCB);
+    encoder.attachHalfQuad(PIN_ENCA, PIN_ENCB);
 
  	setup_read_preferences();
  	setup_webserver();
- 	2
+
  	// configure LED PWM functionalitites
 	ledcSetup(ledChannel, freq, resolution);
 	ledcAttachPin(PIN_LED, ledChannel);
@@ -306,7 +306,7 @@ void loop(){
     	if ((millis() - last_time_brightness_set) > 2000)  {
     		save_brightness = false;
 			preferences.begin("changlier", false);
-			preferences.putString("brightness", brightness);
+			preferences.putFloat("brightness", brightness);
 			preferences.end();
     	}
     }
