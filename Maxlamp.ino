@@ -32,6 +32,7 @@
 Preferences                             preferences;
 Timer									t;
 
+const float  FADE_GRAIN = 0.01;
 const int PIN_LED = 23; 
 const int PIN_BTN = 26; 
 const int PIN_ENCA = 25; 
@@ -60,12 +61,12 @@ boolean on;
 
 void setup_read_preferences() {
     preferences.begin("changlier", false);
-
+ 
     hostname = preferences.getString("hostname");
     if (hostname == String()) { hostname = "changlier"; }
     Serial.print("Hostname: ");
     Serial.println(hostname);
-    brightness = preferences.getFloat("brightness");
+    brightness = preferences.getFloat("brightness",0.);
     Serial.print("Brightness: ");
     Serial.println(brightness);
 
@@ -213,11 +214,27 @@ void setup_webserver() {
 //																				Brightness
 
 void set_brightness() {
-	if (on) {
-	    ledcWrite(ledChannel, brightness * brightness * 30000);
-	} else {
-	    ledcWrite(ledChannel, 0);
+	static boolean last_state;
+	static float b;
+	
+	if (on != last_state) {
+		if (on) {
+			b += FADE_GRAIN;
+			if (b >= brightness) {
+				b = brightness;
+				last_state = true;
+			}
+		} else {
+			b -= FADE_GRAIN;
+			if (b <= 0.) {
+				b = 0.;
+				last_state = false;
+			}
+		}
+		Serial.println(b);
 	}
+	
+	ledcWrite(ledChannel, b * b * 30000);
 }
 
 
@@ -237,9 +254,9 @@ void check_button() {
 		} else {
 	    	on = true;
 		}
+		Serial.println(on);
 	}
 	
-	Serial.println(on);
 }
 
 
@@ -249,7 +266,7 @@ void check_button() {
 void check_encoder() {
 	if (encoder.getCount() == 0) return;
     char dir = encoder.getCount() > 0;
-    float f = (float)encoder.getCount() / 100.;
+    float f = (float)encoder.getCount() / 15.;
     f = abs(f);
     f = pow(f,2);
     if (!dir) f = -f;
@@ -279,7 +296,7 @@ void setup(){
     pinMode(PIN_ENCA,INPUT_PULLUP);
     pinMode(PIN_ENCB,INPUT_PULLUP);
 
-    encoder.attachHalfQuad(PIN_ENCA, PIN_ENCB);
+    encoder.attachHalfQuad(PIN_ENCB, PIN_ENCA);
 
  	setup_read_preferences();
  	setup_webserver();
@@ -308,6 +325,7 @@ void loop(){
 			preferences.begin("changlier", false);
 			preferences.putFloat("brightness", brightness);
 			preferences.end();
+			Serial.println("Brightness saved");
     	}
     }
 }
