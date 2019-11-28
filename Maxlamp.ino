@@ -24,7 +24,7 @@
 #include <ESPmDNS.h>
 #include <SPIFFS.h>
 #include "ESPAsyncWebServer.h"
-#include <LXESP32DMX.h>
+#include <ESP32Encoder.h>
 
 //========================================================================================
 //----------------------------------------------------------------------------------------
@@ -32,14 +32,20 @@
 Preferences                             preferences;
 Timer									t;
 
-// the number of the LED pin
-const int ledPin = 16;  // 16 corresponds to GPIO16
+const int PIN_LED = 23; 
+const int PIN_BTN = 26; 
+const int PIN_ENCA = 25; 
+const int PIN_ENCB = 33; 
 
 // setting PWM properties
 const int freq = 5000;
 const int ledChannel = 0;
-const int resolution = 8;
+const int resolution = 16;
 
+ESP32Encoder        encoder;
+
+long            	last_time_brightness_set;
+boolean            	save_brightness = false;
 
 // .............................................................................WIFI STUFF 
 #define WIFI_TIMEOUT					4000
@@ -47,6 +53,8 @@ String 									hostname;
 AsyncWebServer                          server(80);
 float brightness;
 boolean on;
+
+
 //----------------------------------------------------------------------------------------
 //																				Preferences
 
@@ -57,6 +65,9 @@ void setup_read_preferences() {
     if (hostname == String()) { hostname = "changlier"; }
     Serial.print("Hostname: ");
     Serial.println(hostname);
+    brightness = preferences.getFloat("brightness");
+    Serial.print("Brightness: ");
+    Serial.println(brightness);
 
 	preferences.end();
 }
@@ -180,14 +191,15 @@ void setup_webserver() {
             	inputMessage = request->getParam("brightness")->value();
 
             	brightness = inputMessage.toFloat() / 100.;
+            	last_time_brightness_set = millis();
+            	save_brightness = true;
             	Serial.println(brightness);
+            	
             } else if (request->hasParam("onoff")) {
-            	inputMessage = request->getParam("brightness")->value();
+            	inputMessage = request->getParam("onoff")->value();
 				if (inputMessage == "true") on = true;
 				else on = false;
 				Serial.println(on);
-            	brightness = inputMessage.toFloat() / 100.;
-            	Serial.println(brightness);
             }
             
             request->send(200, "text/text", inputMessage);
@@ -197,8 +209,58 @@ void setup_webserver() {
     }
 }
 
-void setbrightness() {
-    ledcWrite(ledChannel, brightness * 255);
+//----------------------------------------------------------------------------------------
+//																				Brightness
+
+void set_brightness() {
+	if (on) {
+	    ledcWrite(ledChannel, brightness * brightness * 30000);
+	} else {
+	    ledcWrite(ledChannel, 0);
+	}
+}
+
+
+//----------------------------------------------------------------------------------------
+//																				Button
+
+void check_button() {
+	static int last_button;
+	int button = digitalRead(PIN_BTN);
+	
+	if (button == last_button) return;
+	last_button = button;
+	
+	if (!button) {
+		if (on) {
+			on = false;
+		} else {
+	    	on = true;
+		}
+	}
+	
+	Serial.println(on);
+}
+
+
+//----------------------------------------------------------------------------------------
+//																				Encoder
+
+void check_encoder() {
+	if (encoder.getCount() == 0) return;
+    char dir = encoder.getCount() > 0;
+    float f = (float)encoder.getCount() / 100.;
+    f = abs(f);
+    f = pow(f,2);
+    if (!dir) f = -f;
+    brightness += f;
+    
+    if (brightness > 1.) brightness = 1.;
+    if (brightness < 0). brightness = 0.;
+    encoder.setCount(0);
+	last_time_brightness_set = millis();
+	save_brightness = true;
+	Serial.println(brightness);
 }
 
 //========================================================================================
@@ -212,15 +274,23 @@ void setup(){
          Serial.println("An Error has occurred while mounting SPIFFS");
          return;
     }
- 
+    
+    pinMode(PIN_BTN,INPUT_PULLUP);
+    pinMode(PIN_ENCA,INPUT_PULLUP);
+    pinMode(PIN_ENCB,INPUT_PULLUP);
+
+    encoder.attachHalfQuad(ENCA, ENCB);
+
  	setup_read_preferences();
  	setup_webserver();
- 	
+ 	2
  	// configure LED PWM functionalitites
 	ledcSetup(ledChannel, freq, resolution);
-	ledcAttachPin(ledPin, ledChannel);
+	ledcAttachPin(PIN_LED, ledChannel);
   
- 	t.every(10,setbrightness);
+ 	t.every(10,set_brightness);
+ 	t.every(10,check_button);
+ 	t.every(20,check_encoder);
 }
 
 
@@ -231,4 +301,13 @@ void setup(){
  
 void loop(){
     t.update();
+    
+    if (save_brightness) {
+    	if ((millis() - last_time_brightness_set) > 2000)  {
+    		save_brightness = false;
+			preferences.begin("changlier", false);
+			preferences.putString("brightness", brightness);
+			preferences.end();
+    	}
+    }
 }
